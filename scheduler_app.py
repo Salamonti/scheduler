@@ -27,6 +27,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 import hashlib
 import os
+from collections.abc import Mapping
 
 # ============================================================================
 # PAGE CONFIG
@@ -73,11 +74,11 @@ def check_credentials(username, password):
                 debug_info.append(f"st.secrets.auth type: {type(auth)}")
                 debug_info.append(f"st.secrets.auth content: {auth}")
                 
-                if isinstance(auth, dict):
-                    # Format: [auth] admin = "password"
-                    debug_info.append(f"Dict keys: {list(auth.keys())}")
+                if isinstance(auth, Mapping):
+                    # Format: [auth] admin = "password" (could be dict or AttrDict)
+                    debug_info.append(f"Mapping keys: {list(auth.keys())}")
                     if username in auth:
-                        debug_info.append(f"Found user '{username}' in dict")
+                        debug_info.append(f"Found user '{username}' in mapping")
                         if auth[username] == password:
                             debug_info.append("Password matches!")
                             if DEBUG:
@@ -86,7 +87,7 @@ def check_credentials(username, password):
                         else:
                             debug_info.append("Password mismatch")
                     else:
-                        debug_info.append(f"User '{username}' not in dict")
+                        debug_info.append(f"User '{username}' not in mapping")
                 elif isinstance(auth, list):
                     # Format: [[auth]] username = "admin" password = "password"
                     debug_info.append(f"List length: {len(auth)}")
