@@ -26,6 +26,7 @@ from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 import hashlib
+import os
 
 # ============================================================================
 # PAGE CONFIG
@@ -37,6 +38,125 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ============================================================================
+# AUTHENTICATION
+# ============================================================================
+
+# Initialize session state for authentication
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.username = None
+
+# Check if debug mode is enabled via query parameter
+def is_debug_mode():
+    try:
+        # Streamlit 1.28+ has query_params
+        if hasattr(st, "query_params"):
+            return st.query_params.get("debug", "").lower() == "true"
+    except:
+        pass
+    return False
+
+DEBUG = is_debug_mode()
+
+def check_credentials(username, password):
+    # Debug: show what's in secrets (will be hidden in production)
+    debug_info = []
+    
+    try:
+        # Check Streamlit secrets first
+        if hasattr(st, "secrets"):
+            debug_info.append(f"st.secrets exists: {type(st.secrets)}")
+            if hasattr(st.secrets, "auth"):
+                auth = st.secrets.auth
+                debug_info.append(f"st.secrets.auth type: {type(auth)}")
+                debug_info.append(f"st.secrets.auth content: {auth}")
+                
+                if isinstance(auth, dict):
+                    # Format: [auth] admin = "password"
+                    debug_info.append(f"Dict keys: {list(auth.keys())}")
+                    if username in auth:
+                        debug_info.append(f"Found user '{username}' in dict")
+                        if auth[username] == password:
+                            debug_info.append("Password matches!")
+                            if DEBUG:
+                                st.write("Debug:", debug_info)
+                            return True
+                        else:
+                            debug_info.append("Password mismatch")
+                    else:
+                        debug_info.append(f"User '{username}' not in dict")
+                elif isinstance(auth, list):
+                    # Format: [[auth]] username = "admin" password = "password"
+                    debug_info.append(f"List length: {len(auth)}")
+                    for i, user in enumerate(auth):
+                        debug_info.append(f"List item {i}: {user}")
+                        if isinstance(user, dict):
+                            if user.get("username") == username:
+                                debug_info.append(f"Found user '{username}' in list")
+                                if user.get("password") == password:
+                                    debug_info.append("Password matches!")
+                                    if DEBUG:
+                                        st.write("Debug:", debug_info)
+                                    return True
+                                else:
+                                    debug_info.append("Password mismatch")
+            else:
+                debug_info.append("No 'auth' key in st.secrets")
+        else:
+            debug_info.append("st.secrets not available")
+        
+        # Check environment variables
+        env_user = os.getenv("SCHEDULER_USERNAME")
+        env_pass = os.getenv("SCHEDULER_PASSWORD")
+        debug_info.append(f"Env user: {'SET' if env_user else 'NOT SET'}")
+        if env_user and env_pass and username == env_user and password == env_pass:
+            debug_info.append("Environment variable auth successful")
+            if DEBUG:
+                st.write("Debug:", debug_info)
+            return True
+        
+        # Hardcoded fallback (for development only)
+        if username == "admin" and password == "admin":
+            st.warning("Using default credentials - change in production!")
+            debug_info.append("Using default admin/admin")
+            if DEBUG:
+                st.write("Debug:", debug_info)
+            return True
+        
+    except Exception as e:
+        st.error(f"Authentication error: {e}")
+        debug_info.append(f"Exception: {e}")
+        if DEBUG:
+            st.write("Debug:", debug_info)
+    
+    # If we get here, authentication failed
+    if DEBUG:
+        st.write("Authentication debug:", debug_info)
+    return False
+
+# If not authenticated, show login form
+if not st.session_state.authenticated:
+    st.title("🔒 YRH IM Schedule Generator - Login")
+    if DEBUG:
+        st.info("🔍 Debug mode enabled. Add ?debug=true to URL to see authentication details.")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+        if submit:
+            if check_credentials(username, password):
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.success(f"Welcome, {username}!")
+                st.rerun()
+            else:
+                st.error("Invalid username or password")
+    st.stop()
+
+# If authenticated, continue with the app
+st.sidebar.markdown(f"👤 **Logged in as:** {st.session_state.username}")
 
 # ============================================================================
 # SCHEDULING ENGINE (embedded from im_scheduler_v2.py)
@@ -1392,6 +1512,12 @@ with st.sidebar:
         if vacations:
             st.session_state.vacations = vacations
             st.success(f"✓ Loaded {len(vacations)} doctors' vacations")
+
+    st.divider()
+    if st.button("🚪 Logout"):
+        st.session_state.authenticated = False
+        st.session_state.username = None
+        st.rerun()
 
 
 # ============================================================================
